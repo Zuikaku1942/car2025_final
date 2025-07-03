@@ -38,14 +38,13 @@ car_plan_t g_CarPlan_Base[] =
 car_plan_t g_CarPlan_Supper[] =
 { // angle left right speed diastance run_time
   		// test sreer moto */ 
-	
-	{ -10,{ 550 , 500} , 20000 , 300 } ,  	//stage 1 forward 1.8m
-	{ 60  , { 400, 500} , 0 , 100 } ,	 	//stage 2 turn left 90 turn right 1s 
-	{ -10,{ 550 , 500} , 20000 , 80 }	,	//stage 3 forward 1.2m
-	{ 60  , { 400, 500} , 0 , 125 },		//stage 4 turn left 90 turn right 1.25s 
-	{ -10,{ 550 , 500} , 20000 , 300 },	     
-	{ 0 , {0 ,0},  0 , 0},
-	/* { 17  , { 100 , 100} , 0 , 30 } ,		// run 1s with 50mm/s speed straightly
+	//-：右  左速度 右速度 避障距离 time
+	/* { -8,{ 550 , 500} , 40000 , 3000 } ,  	//THIS LINE ONLY FOR OBSTACLE_AVOIDING stage 1 forward 1.8m
+ */
+
+
+	{ -8,{ 550 , 500} , 40000 , 150 } ,
+	{ 17  , { 100 , 100} , 0 , 30 } ,		// run 1s with 50mm/s speed straightly
 	{ 80  , { 200 , 400} , 0 , 150 } ,		// turn left 1.1s 
 	
 	{ 17  , { 100 , 100} , 0 , 30 } ,		// run 1s with 50mm/s speed straightly
@@ -56,6 +55,26 @@ car_plan_t g_CarPlan_Supper[] =
 	{ 17  , { 0   , 0  } , 0 , 0 } ,		// stop  */
 
 };
+car_plan_t g_CarPlan_Avoid[] =
+{
+	{ 80  , { 200 , 400} , 0 , 100  }, // 向右微调转弯
+	{ -7,{ 550 , 500} , 20000 , 20 },
+    { -80  , { 400 , 200} , 0 , 90  }, //向left微调转弯
+	{ -7,{ 550 , 500} , 20000 , 100 },    // 前进1m（根据速度和时间算）
+   // 停止
+	{ -80  , { 400 , 200} , 0 , 90  },
+	{ 80  , { 200 , 400} , 0 , 150  },
+	{ -7,{ 550 , 500} , 20000 , 10 },
+		{ 0   , {0  , 0  } , 0 , 0   }, 
+};
+
+
+
+
+
+
+
+
 
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -160,7 +179,7 @@ void CarCtrl_Speed_PID( )
 	Drive_Moto_Ctrl( 1 , -g_CarCtrl.moto_drive[1] );	
 }
 
-void CarCtrl_PlanSet( void )
+/* void CarCtrl_PlanSet( void )
 {
 	
 
@@ -180,7 +199,7 @@ void CarCtrl_PlanSet( void )
 	} 
 	 */
 
-	 if ( car_plan_ptr->run_time_set == 0 )
+/* 	 if ( car_plan_ptr->run_time_set == 0 )
 {
 	// 停止状态
 	g_car_ctrl_state = CarCtrl_STOP;
@@ -221,6 +240,61 @@ void CarCtrl_PlanSet( void )
 			g_CarCtrl.run_step ++ ;			
 		}
 	} 
+} */
+void CarCtrl_PlanSet( void )
+{
+	car_plan_t* car_plan_ptr ;
+	car_plan_ptr = g_CarPlan_Ptr + g_CarCtrl.run_step;
+
+	if ( car_plan_ptr->run_time_set == 0 )
+	{
+		// 计划结束，停止
+		g_car_ctrl_state = CarCtrl_STOP;
+		Steer_Moto_Ctrl(STEER_MOTO_POS , 0);
+		CarCtrl_SpeedStop();
+		for( int32_t i = 0 ; i < DRIVE_MOTO_NUM ; i++)
+		{
+			g_CarCtrl.moto_drive[i] = 0;
+			Drive_Moto_Ctrl( i , 0 );
+		}
+		memset( &g_CarCtrl , 0 , sizeof(g_CarCtrl) );
+		return;
+	}
+
+	if ( g_CarCtrl.run_time == 0 )
+	{
+		// 初始化当前计划
+		g_CarCtrl.run_time++;
+		for (int32_t i = 0 ; i < DRIVE_MOTO_NUM ; i++)
+			g_CarCtrl.car_speed_set[i] = car_plan_ptr->car_speed_set[i];
+		Steer_Moto_Ctrl(STEER_MOTO_POS , car_plan_ptr->car_angle_set);
+	}
+	else
+	{
+		// 执行中：检测时间或障碍物
+		g_CarCtrl.run_time++;
+
+		if ( g_CarCtrl.run_time >= car_plan_ptr->run_time_set ||
+		     g_ultrawave_data[0].distance < car_plan_ptr->front_distance_set )
+		{
+			// 如果前方太近
+			if (g_ultrawave_data[0].distance < car_plan_ptr->front_distance_set &&
+				g_CarPlan_Ptr == g_CarPlan_Supper)  // 说明还在主路径中
+			{
+				// 切换为避障路径（你需要定义它）
+				extern car_plan_t g_CarPlan_Avoid[];  // 声明
+				g_CarPlan_Ptr = g_CarPlan_Avoid;
+				g_CarCtrl.run_step = 0;
+				g_CarCtrl.run_time = 0;
+			}
+			else
+			{
+				// 正常进入下一步
+				g_CarCtrl.run_time = 0;
+				g_CarCtrl.run_step++;
+			}
+		}
+	}
 }
 
 
